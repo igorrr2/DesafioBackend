@@ -9,6 +9,7 @@ namespace DesafioBackend.Data
         public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
         public DbSet<Moto> Motos { get; set; }
-        public DbSet<Entregador> Entregador { get; set; }
+        public DbSet<Entregador> Entregadores { get; set; }
+        public DbSet<Locacao> Locacoes { get; set; }
     }
 }
