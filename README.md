@@ -1,8 +1,6 @@
 1. Para rodar a api é necessário ter instalado a versão 7.0 do DotNet framework
 
-2. Criar o bando de dados DesafioBackend no PostgreSQL
-
-3. Rodar os scripts de Create para as tabelas abaixo
+2. Abrir o Cmd na raiz do projeto e rodar o comando dotnet ef database update que irá criar o banco de dados e suas tabelas correspondentes (caso o comando falhe, criar o banco DesafioBackend e rodar os scripts na mão)
 
 -- Tabela de Motos
 
@@ -57,6 +55,6 @@
     );
 
 
-4. Após configurar connection com banco, abra o cmd a raiz do projeto e rode docker-compose up -d, comando irá rodar o rabbitMQ na url http://localhost:15672/ (Caso seja necessário, pode alterar o arquivo docker-compose.yml para alterar a senha do rabbitMQ)
+4. Após configurar connection com banco, rode docker-compose up -d, comando irá rodar o rabbitMQ na url http://localhost:15672/ (Caso seja necessário, pode alterar o arquivo docker-compose.yml para alterar a senha do rabbitMQ)
 
 5. Após rodar o rabbitMQ, rode o projeto da api no Visual Studio que irá abrir a tela do swagger
