@@ -4,6 +4,7 @@ using DesafioBackend.Models;
 using DesafioBackend.SolicitacaoRespostas;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using RabbitMQ.Client;
 using System.Text;
 using System.Text.Json;
@@ -40,11 +41,31 @@ namespace DesafioBackend.Controllers
                 _context.Motos.Add(solicitacao);
                 await _context.SaveChangesAsync();
 
+                var factory = new ConnectionFactory() { HostName = "localhost", UserName = "guest", Password = "guest" };
+                IConnection conn = await factory.CreateConnectionAsync();
+                IChannel channel = await conn.CreateChannelAsync();
+
+                await channel.QueueDeclareAsync("moto_cadastrada_queue", false, false, false, null);
+
+                var evento = new MotoCadastradaEvent
+                {
+                    Identificador = solicitacao.Identificador,
+                    Ano = solicitacao.Ano,
+                    Modelo = solicitacao.Modelo,
+                    Placa = solicitacao.Placa,
+                };
+
+                var message = JsonConvert.SerializeObject(evento);
+                var body = Encoding.UTF8.GetBytes(message);
+                var props = new BasicProperties();
+
+                await channel.BasicPublishAsync(string.Empty, "moto_cadastrada_queue", false, props, body);
+
                 return CreatedAtAction(nameof(ObterMotoPorId), new { id = solicitacao.Id }, solicitacao);
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new RespostaGenerica(ex.Message + "\n\n" + ex.StackTrace));
             }
         }
 
@@ -107,7 +128,7 @@ namespace DesafioBackend.Controllers
             }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                return BadRequest(new RespostaGenerica(ex.Message + "\n\n" + ex.StackTrace));
             }
         }
 
@@ -120,9 +141,8 @@ namespace DesafioBackend.Controllers
                 if (moto == null)
                     return NotFound(new RespostaGenerica("Moto não encontrada"));
 
-                // Exemplo:
-                // if (PossuiLocacoesAtivas(moto.Id))
-                //     return BadRequest(new RespostaGenerica("Request mal formada"));
+                if (PossuiLocacoesAtivas(moto.Identificador))
+                    return BadRequest(new RespostaGenerica("Não é possível apagar a moto pois possui locação ativa"));
 
                 _context.Motos.Remove(moto);
                 await _context.SaveChangesAsync();
@@ -141,6 +161,10 @@ namespace DesafioBackend.Controllers
             {
                 return BadRequest(ex.Message);
             }
+        }
+        private bool PossuiLocacoesAtivas(string motoId)
+        {
+            return _context.Locacoes.Any(l => l.MotoId == motoId && DateTime.Now < l.DataFim);
         }
     }
 }

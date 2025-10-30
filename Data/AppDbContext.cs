@@ -11,5 +11,7 @@ namespace DesafioBackend.Data
         public DbSet<Moto> Motos { get; set; }
         public DbSet<Entregador> Entregadores { get; set; }
         public DbSet<Locacao> Locacoes { get; set; }
+        public DbSet<MotoNotificada> MotosNotificadas { get; set; }
+
     }
 }
