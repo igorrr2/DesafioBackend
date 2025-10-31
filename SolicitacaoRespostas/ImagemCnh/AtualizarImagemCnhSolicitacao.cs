@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace DesafioBackend.SolicitacaoRespostas
+namespace DesafioBackend.SolicitacaoRespostas.ImagemCnh
 {
     public class AtualizarImagemCnhSolicitacao
     {

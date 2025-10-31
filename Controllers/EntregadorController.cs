@@ -1,6 +1,7 @@
 ﻿using DesafioBackend.Data;
 using DesafioBackend.Models;
 using DesafioBackend.SolicitacaoRespostas;
+using DesafioBackend.SolicitacaoRespostas.ImagemCnh;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Text.RegularExpressions;
@@ -20,7 +21,7 @@ namespace DesafioBackend.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CadastrarEntregador([FromBody] Entregador solicitacao)
+        public async Task<IActionResult> CadastrarEntregador([FromBody] EntregadorSolicitacao solicitacao)
         {
             if (string.IsNullOrEmpty(solicitacao.Identificador) ||
                 string.IsNullOrEmpty(solicitacao.Nome) ||
@@ -48,8 +49,11 @@ namespace DesafioBackend.Controllers
                 if (cnhExistente)
                     return BadRequest(new RespostaGenerica("CNH já cadastrada."));
 
-                _context.Entregadores.Add(solicitacao);
-                await _context.SaveChangesAsync();
+                Entregador entregador = new Entregador(solicitacao);
+
+                Mensagem mensagem = await Entregador.TryAdd(_context, entregador);
+                if(!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 return StatusCode(201);
             }
@@ -65,18 +69,24 @@ namespace DesafioBackend.Controllers
             if (solicitacao == null || string.IsNullOrEmpty(solicitacao.ImagemCnh))
                 return BadRequest(new RespostaGenerica("Dados inválidos."));
 
+            Mensagem mensagem = new Mensagem();
+            Entregador entregador = new Entregador();
             try
             {
-                var entregador = await _context.Entregadores
-                .FirstOrDefaultAsync(e => e.Identificador == id);
+                (mensagem, entregador) = await Entregador.TryGetById(_context, id);
 
+                if(!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
+                if(entregador == null)
+                    return BadRequest("Entregador não encontrado");
 
                 byte[] imagemBytes = Convert.FromBase64String(solicitacao.ImagemCnh);
 
                 if (!Directory.Exists(CaminhoStorage))
                     Directory.CreateDirectory(CaminhoStorage);
 
-                Mensagem mensagem = Util.RemoverAcentos(entregador.Nome, out string nomeSemAcento);
+                mensagem = Util.RemoverAcentos(entregador.Nome, out string nomeSemAcento);
                 if (!mensagem.Sucesso)
                     return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
@@ -86,8 +96,10 @@ namespace DesafioBackend.Controllers
                 await System.IO.File.WriteAllBytesAsync(caminhoCompleto, imagemBytes);
 
                 entregador.ImagemCNH = caminhoCompleto;
-                _context.Entregadores.Update(entregador);
-                await _context.SaveChangesAsync();
+                
+                mensagem = await Entregador.TryUpdate(_context, entregador);
+                if(!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 return StatusCode(201);
             }

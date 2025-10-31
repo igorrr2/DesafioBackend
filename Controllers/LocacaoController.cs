@@ -20,11 +20,16 @@ namespace DesafioBackend.Controllers
         [HttpPost]
         public async Task<IActionResult> CriarLocacao([FromBody] CriarLocacaoSolicitacao solicitacao)
         {
+            Mensagem mensagem = new Mensagem();
+            Entregador entregador = new Entregador();
             try
             {
-                var entregador = await _context.Entregadores.FirstOrDefaultAsync(e => e.Identificador == solicitacao.EntregadorId);
+                (mensagem, entregador) = await Entregador.TryGetById(_context, solicitacao.EntregadorId);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
                 if (entregador == null)
-                    return NotFound();
+                    return BadRequest("Entregador não encontrado");
 
                 if (entregador.TipoCNH.ToUpper() != "A")
                     return BadRequest("Apenas entregadores com CNH categoria A podem alugar.");
@@ -51,8 +56,10 @@ namespace DesafioBackend.Controllers
                     ValorTotal = valorTotal
                 };
 
-                _context.Locacoes.Add(locacao);
-                await _context.SaveChangesAsync();
+                mensagem = await Locacao.TryAdd(_context, locacao);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
 
                 return StatusCode(201);
             }
@@ -65,10 +72,14 @@ namespace DesafioBackend.Controllers
 
         public async Task<IActionResult> ObterLocacaoPorIdentificador(string id)
         {
+            Mensagem mensagem = new Mensagem();
+            Locacao locacao = new Locacao();
             try
             {
-                var locacao = await _context.Locacoes
-                    .FirstOrDefaultAsync(l => l.Identificador == id);
+                (mensagem, locacao) = await Locacao.TryGetById(_context, id);
+
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 if (locacao == null)
                     return NotFound(new { mensagem = "Locação não encontrada." });
@@ -95,12 +106,19 @@ namespace DesafioBackend.Controllers
         [HttpPut("{id}/devolucao")]
         public async Task<IActionResult> DevolverLocacao([FromRoute] string id, [FromBody] DevolucaoSolicitacao solicitacao)
         {
+            Mensagem mensagem = new Mensagem();
+            Locacao locacao = new Locacao();
             try
             {
                 if (solicitacao == null || solicitacao.DataDevolucao == null)
                     return BadRequest(new { mensagem = "Data de devolução inválida." });
 
-                var locacao = await _context.Locacoes.FirstOrDefaultAsync(l => l.Identificador == id);
+                (mensagem, locacao) = await Locacao.TryGetById(_context, id);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 if (locacao == null)
                     return NotFound(new RespostaGenerica("Locação não encontrada."));
@@ -122,7 +140,9 @@ namespace DesafioBackend.Controllers
 
                 locacao.ValorTotal += locacao.Multa;
 
-                await _context.SaveChangesAsync();
+                mensagem = await Locacao.TryUpdate(_context, locacao);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 return Ok(new RespostaGenerica("Data de devolução informada com sucesso"));
             }

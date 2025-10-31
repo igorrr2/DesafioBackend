@@ -2,6 +2,8 @@
 using DesafioBackend.Events;
 using DesafioBackend.Models;
 using DesafioBackend.SolicitacaoRespostas;
+using DesafioBackend.SolicitacaoRespostas.Moto;
+using DesafioBackend.SolicitacaoRespostas.Placa;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
@@ -23,8 +25,11 @@ namespace DesafioBackend.Controllers
         }
 
         [HttpPost]
-        public async Task<IActionResult> CadastrarMoto([FromBody] Moto solicitacao)
+        public async Task<IActionResult> CadastrarMoto([FromBody] MotoSolicitacao solicitacao)
         {
+            Mensagem mensagem = new Mensagem();
+            Moto motoExistente = new Moto();
+            Moto motoNova = new Moto(solicitacao.Identificador, solicitacao.Ano, solicitacao.Modelo, solicitacao.Placa);
             try
             {
                 if (string.IsNullOrEmpty(solicitacao.Placa) || string.IsNullOrEmpty(solicitacao.Identificador)
@@ -33,13 +38,17 @@ namespace DesafioBackend.Controllers
                     return BadRequest(new RespostaGenerica("Dados inválidos"));
                 }
 
-                var existente = await _context.Motos
-                    .FirstOrDefaultAsync(m => m.Placa == solicitacao.Placa);
-                if (existente != null)
+                (mensagem, motoExistente) = await Moto.TryGetByPlaca(_context, solicitacao.Placa);
+
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
+                if (motoExistente != null)
                     return BadRequest(new RespostaGenerica("Placa já cadastrada."));
 
-                _context.Motos.Add(solicitacao);
-                await _context.SaveChangesAsync();
+                mensagem = await Moto.TryAdd(_context, motoNova);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 var factory = new ConnectionFactory() { HostName = "localhost", UserName = "guest", Password = "guest" };
                 IConnection conn = await factory.CreateConnectionAsync();
@@ -61,7 +70,7 @@ namespace DesafioBackend.Controllers
 
                 await channel.BasicPublishAsync(string.Empty, "moto_cadastrada_queue", false, props, body);
 
-                return CreatedAtAction(nameof(ObterMotoPorId), new { id = solicitacao.Id }, solicitacao);
+                return Ok(motoNova);
             }
             catch (Exception ex)
             {
@@ -72,16 +81,19 @@ namespace DesafioBackend.Controllers
         [HttpGet]
         public async Task<IActionResult> ObterMotos([FromQuery] string? placa)
         {
+            Mensagem mensagem = new Mensagem();
+            Moto moto = new Moto();
             try
             {
-                IQueryable<Moto> query = _context.Motos;
 
-                if (!string.IsNullOrEmpty(placa))
-                    query = query.Where(m => m.Placa == placa);
+                (mensagem, moto) = await Moto.TryGetByPlaca(_context, placa);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
-                var motos = await query.ToListAsync();
+                if (moto == null)
+                    return BadRequest(new RespostaGenerica("Moto não encontrada"));
 
-                return Ok(motos);
+                return Ok(moto);
             }
             catch (Exception ex)
             {
@@ -93,19 +105,32 @@ namespace DesafioBackend.Controllers
         [HttpPut("{id}/placa")]
         public async Task<IActionResult> AtualizarPlaca(string id, AtualizarPlacaSolicitacao solicitacao)
         {
+            Mensagem mensagem = new Mensagem();
+            Moto moto = new Moto();
+            Moto motoExistente = new Moto();
             try
             {
-                var moto = await _context.Motos.FirstOrDefaultAsync(m => m.Identificador == id);
+                (mensagem, moto) = await Moto.TryGetById(_context, id);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
                 if (moto == null)
                     return BadRequest(new RespostaGenerica("Dados inválidos"));
 
-                var existente = await _context.Motos
-                    .FirstOrDefaultAsync(m => m.Placa == solicitacao.Placa && m.Identificador != id);
-                if (existente != null)
+                (mensagem, motoExistente) = await Moto.TryGetByPlaca(_context, id);
+
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
+                if (motoExistente != null && motoExistente.Identificador != id)
                     return BadRequest(new RespostaGenerica("Dados inválidos"));
 
                 moto.Placa = solicitacao.Placa;
-                await _context.SaveChangesAsync();
+
+                mensagem = await Moto.TryUpdate(_context, moto);
+
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 return Ok(new RespostaGenerica("Placa modificada com sucesso"));
             }
@@ -118,11 +143,16 @@ namespace DesafioBackend.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> ObterMotoPorId(string id)
         {
+            Mensagem mensagem = new Mensagem();
+            Moto moto = new Moto();
             try
             {
-                var moto = await _context.Motos.FirstOrDefaultAsync(m => m.Identificador == id);
+                (mensagem, moto) = await Moto.TryGetById(_context, id);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
                 if (moto == null)
-                    return NotFound();
+                    return BadRequest(new RespostaGenerica("Moto não encontrada"));
 
                 return Ok(moto);
             }
@@ -135,25 +165,25 @@ namespace DesafioBackend.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> ApagarMoto(string id)
         {
+            Mensagem mensagem = new Mensagem();
+            Moto moto = new Moto();
             try
             {
-                var moto = await _context.Motos.FirstOrDefaultAsync(m => m.Identificador == id);
-                if (moto == null)
-                    return NotFound(new RespostaGenerica("Moto não encontrada"));
 
-                if (PossuiLocacoesAtivas(moto.Identificador))
+                (mensagem, moto) = await Moto.TryGetById(_context, id);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
+
+                if (moto == null)
+                    return BadRequest(new RespostaGenerica("Moto não encontrada"));
+
+                if (Moto.PossuiLocacoesAtivas(_context, moto.Identificador))
                     return BadRequest(new RespostaGenerica("Não é possível apagar a moto pois possui locação ativa"));
 
-                _context.Motos.Remove(moto);
-                await _context.SaveChangesAsync();
 
-                var detalhes = new
-                {
-                    identificador = moto.Identificador,
-                    ano = moto.Ano,
-                    modelo = moto.Modelo,
-                    placa = moto.Placa
-                };
+                mensagem = await Moto.TryDelete(_context, moto);
+                if (!mensagem.Sucesso)
+                    return BadRequest(new RespostaGenerica(mensagem.Descricao));
 
                 return Ok();
             }
@@ -161,10 +191,6 @@ namespace DesafioBackend.Controllers
             {
                 return BadRequest(ex.Message);
             }
-        }
-        private bool PossuiLocacoesAtivas(string motoId)
-        {
-            return _context.Locacoes.Any(l => l.MotoId == motoId && DateTime.Now < l.DataFim);
         }
     }
 }
